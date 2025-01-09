@@ -29,7 +29,7 @@ resource "aws_instance" "web2" {
   # User data script to install Nginx on the instance
   user_data = <<-EOF
               #!/bin/bash
-              apt update -yto
+              apt update -y
               apt install -y nginx
               echo "<!DOCTYPE html>
               <html lang="en">
