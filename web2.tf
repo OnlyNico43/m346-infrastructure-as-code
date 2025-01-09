@@ -8,7 +8,7 @@ terraform {
   required_version = ">= 1.2.0"
 }
 
- 
+
 
 provider "aws" {
   region  = "us-east-1"
@@ -29,8 +29,20 @@ resource "aws_instance" "web2" {
   # User data script to install Nginx on the instance
   user_data = <<-EOF
               #!/bin/bash
-              apt update -y
+              apt update -yto
               apt install -y nginx
+              echo "<!DOCTYPE html>
+              <html lang="en">
+              <head>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>Hello World</title>
+              </head>
+              <body>
+                  <h1>Hello, World!</h1>
+                  <p>Welcome to your Nginx server!</p>
+              </body>
+              </html>" | sudo tee /var/www/html/index.html
               systemctl enable nginx
               systemctl start nginx
               EOF
