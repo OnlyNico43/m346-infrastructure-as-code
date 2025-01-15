@@ -11,30 +11,26 @@ variable "environment" {
   default     = "dev"
 }
 
-# Create VPC (Virtual Private Cloud)
-resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_hostnames = true
-  enable_dns_support   = true
-
-  tags = {
-    Name = "main"
+# VPC Data Sources
+data "aws_vpc" "existing" {
+  filter {
+    name   = "tag:Name"
+    values = ["main"]  # Replace with your VPC name
   }
 }
 
-# Create Internet Gateway
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "main"
+# Get the existing Internet Gateway
+data "aws_internet_gateway" "main" {
+  filter {
+    name   = "attachment.vpc-id"
+    values = [data.aws_vpc.existing.id]
   }
 }
 
 # Create Public Subnets (minimum 2 required for RDS)
 resource "aws_subnet" "subnet_1" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.1.0/24"
+  vpc_id            = data.aws_vpc.existing.id
+  cidr_block        = "10.0.5.0/24"
   availability_zone = "us-east-1a"
 
   tags = {
@@ -43,8 +39,8 @@ resource "aws_subnet" "subnet_1" {
 }
 
 resource "aws_subnet" "subnet_2" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.2.0/24"
+  vpc_id            = data.aws_vpc.existing.id
+  cidr_block        = "10.0.6.0/24"
   availability_zone = "us-east-1b"
 
   tags = {
@@ -53,8 +49,8 @@ resource "aws_subnet" "subnet_2" {
 }
 
 # Create DB Subnet Group
-resource "aws_db_subnet_group" "main" {
-  name       = "main"
+resource "aws_db_subnet_group" "rds-subnet-group" {
+  name       = "rds-subnet-group"
   subnet_ids = [aws_subnet.subnet_1.id, aws_subnet.subnet_2.id]
 
   tags = {
@@ -63,33 +59,14 @@ resource "aws_db_subnet_group" "main" {
 }
 
 # Create Security Group for RDS
-resource "aws_security_group" "rds" {
+data "aws_security_group" "rds" {
   name        = "rds-security-group"
-  description = "Security group for RDS MySQL instance"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port   = 3306
-    to_port     = 3306
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Be more restrictive in production
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "rds-security-group"
-  }
+  vpc_id      = data.aws_vpc.existing.id
 }
 
 # Create RDS Instance
 resource "aws_db_instance" "mysql" {
-  identifier           = "mysql2"
+  identifier           = "mysql"
   engine              = "mysql"
   engine_version      = "8.4.3"
   instance_class      = "db.t3.micro"  # Change this based on your needs
@@ -102,8 +79,8 @@ resource "aws_db_instance" "mysql" {
   password            = var.db_password
   
   # Network settings
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.rds-subnet-group.name
+  vpc_security_group_ids = [data.aws_security_group.rds.id]
   publicly_accessible    = true  # Set to false for production
 
   # Backup settings
@@ -139,7 +116,7 @@ resource "null_resource" "db_setup" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      mysql -h ${aws_db_instance.mysql.endpoint} -P ${aws_db_instance.mysql.port} -u ${aws_db_instance.mysql.username} -p${aws_db_instance.mysql.password} <<EOF
+      mysql -h ${aws_db_instance.mysql.endpoint} -P ${aws_db_instance.mysql.port} -u ${aws_db_instance.mysql.username} -p${var.db_password} <<EOF
       
       -- Create box table
       CREATE TABLE IF NOT EXISTS box (
